@@ -5,7 +5,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const JWT_SECRET = Math.random().toString(36).substring(7);
+const JWTs_SECRET = Math.random().toString(36).substring(7);
 
 
 const PORT = 5006;
