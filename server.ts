@@ -54,6 +54,36 @@ app.post('/api/auth/register', async (req: Request, res: Response): Promise<void
     }
 });
 
+app.post('/api/auth/login', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { usernameOrEmail, password } = req.body;
+
+        const userQuery = await pool.query(
+            'SELECT * FROM users WHERE username = $1 OR email = $2',
+            [usernameOrEmail, usernameOrEmail]
+        );
+        const user = userQuery.rows[0];
+        if (!user) {
+            res.status(401).json({ error: 'Invalid username or email' });
+            return;
+        }
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+        if (!isPasswordValid) {
+            res.status(401).json({ error: 'Invalid password' });
+            return;
+        }
+
+        const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1h' });
+        res.status(200).json({
+             token,
+             user: { id: user.id, username: user.username, email: user.email }
+        });
+    } catch (error) {
+        console.error('Error authenticating user:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 const PORT = 5006;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
