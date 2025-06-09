@@ -3,6 +3,9 @@ import cors from 'cors';
 import pool from './db/dbConnection.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import { authMiddleware } from './AuthMiddleware.js';
+dotenv.config();
 
 
 const app = express();
@@ -12,7 +15,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-const JWT_SECRET = Math.random().toString(36).substring(7);
+const JWT_SECRET =  process.env.JWT_SECRET || Math.random().toString(36).substring(7);
 
 app.post('/api/auth/register', async (req: Request, res: Response): Promise<void> => {
     try {
@@ -83,6 +86,64 @@ app.post('/api/auth/login', async (req: Request, res: Response): Promise<void> =
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+app.post('/api/tasks', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const type = req.body;
+    console.log('Received task type:', type);
+
+    const userId = req.user?.id;
+    console.log('User ID from request:', userId);
+
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    if (type.type === 'note') {
+        const noteResult = await pool.query(
+        'INSERT INTO notepads (title, content, user_id) VALUES ($1, $2, $3) RETURNING *',
+        ['Untitled Note', '', userId]
+      );
+        res.status(201).json(noteResult.rows[0]);
+    } else if (type.type === 'kanban') {
+      // Insert into kanbans
+      const kanbanResult = await pool.query(
+        'INSERT INTO kanbans (title, user_id) VALUES ($1, $2) RETURNING *',
+        ['Untitled Kanban', userId]
+      );
+      res.status(201).json(kanbanResult.rows[0]);
+    } else if (type.type === 'list') {
+      // Insert into lists
+      const listResult = await pool.query(
+        'INSERT INTO lists (title, user_id) VALUES ($1, $2) RETURNING *',
+        ['Untitled List', userId]
+      );
+      res.status(201).json(listResult.rows[0]);
+    } else {
+        res.status(400).json({ error: 'Invalid task type' });
+        return;
+    }
+  } catch (error) {
+    console.error('Error creating task:', error);
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+});
+
+app.get('/api/tasks/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const userId = req.user?.id;
+    const result = await pool.query(
+        'SELECT * FROM notepads WHERE id = $1 AND user_id = $2',
+        [id, userId]
+    )
+    if (result.rows.length === 0) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
+    }
+    res.status(200).json(result.rows[0]);
+})
+
 
 const PORT = 5006;
 app.listen(PORT, '0.0.0.0', () => {

@@ -10,6 +10,10 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["./**/*.ts", "db/dbConnection.js"],
+  "include": [
+    "./**/*.ts",
+    "db/dbConnection.js",
+    "types/express/index.d.ts",
+  ],
   "exclude": ["node_modules", "dist"]
 }
