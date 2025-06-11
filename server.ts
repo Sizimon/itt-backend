@@ -130,20 +130,38 @@ app.post('/api/tasks', authMiddleware, async (req: Request, res: Response): Prom
   }
 });
 
-app.get('/api/tasks/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-    const { id } = req.params;
+app.get('/api/tasks/fetch', authMiddleware, async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.id;
-    const result = await pool.query(
-        'SELECT * FROM notepads WHERE id = $1 AND user_id = $2',
-        [id, userId]
-    )
-    if (result.rows.length === 0) {
-        res.status(404).json({ error: 'Task not found' });
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
         return;
     }
-    res.status(200).json(result.rows[0]);
+    try {
+        const [notepads, kanbans, lists] = await Promise.all ([
+            pool.query('SELECT *, \'note\' as type FROM notepads WHERE user_id = $1', [userId]),
+            pool.query('SELECT *, \'kanban\' as type FROM kanbans WHERE user_id = $1', [userId]),
+            pool.query('SELECT *, \'list\' as type FROM lists WHERE user_id = $1', [userId])
+        ])
+        console.log('Fetched tasks:', {
+            notepads: notepads.rows,
+            kanbans: kanbans.rows,
+            lists: lists.rows
+        })
+        res.status(200).json({
+            notepads: notepads.rows,
+            kanbans: kanbans.rows,
+            lists: lists.rows,
+            all: [
+                ...notepads.rows,
+                ...kanbans.rows,
+                ...lists.rows
+            ]
+        });
+    } catch (error) {
+        console.error('Error fetching tasks:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 })
-
 
 const PORT = 5006;
 app.listen(PORT, '0.0.0.0', () => {
