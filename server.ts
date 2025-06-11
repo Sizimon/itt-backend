@@ -163,6 +163,34 @@ app.get('/api/tasks/fetch', authMiddleware, async (req: Request, res: Response):
     }
 })
 
+app.put('/api/tasks/edit/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+    const taskId = req.params.id;
+    const { title, content } = req.body;
+
+    const userId = req.user?.id;
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE notepads SET title = $1, content = $2 WHERE id = $3 AND user_id = $4 RETURNING *',
+            [title, content, taskId, userId]
+        );
+
+        if (result.rows.length === 0) {
+            res.status(404).json({ error: 'Task not found' });
+            return;
+        }
+
+        res.status(200).json(result.rows[0]);
+    } catch (error) {
+        console.error('Error updating task:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 const PORT = 5006;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
