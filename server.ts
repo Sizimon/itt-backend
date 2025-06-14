@@ -137,25 +137,36 @@ app.get('/api/tasks/fetch', authMiddleware, async (req: Request, res: Response):
         return;
     }
     try {
-        const [notepads, kanbans, lists] = await Promise.all ([
-            pool.query('SELECT *, \'note\' as type FROM notepads WHERE user_id = $1', [userId]),
-            pool.query('SELECT *, \'kanban\' as type FROM kanbans WHERE user_id = $1', [userId]),
-            pool.query('SELECT *, \'list\' as type FROM lists WHERE user_id = $1', [userId])
-        ])
-        console.log('Fetched tasks:', {
-            notepads: notepads.rows,
-            kanbans: kanbans.rows,
-            lists: lists.rows
-        })
+        const notepadsResult = await pool.query(
+            'SELECT *, \'note\' as type FROM notepads WHERE user_id = $1',
+            [userId]
+        );
+        const notepads = notepadsResult.rows;
+        console.log('Fetched notepads:', notepads);
+        
+        const notepadIds = notepads.map(notepad => notepad.id);
+        let tagsForNotepad: Record<string, string[]> = {};
+        if (notepadIds.length > 0) {
+            const tagsResult = await pool.query(
+                'SELECT notepad_id, tag_id FROM notepad_tags WHERE notepad_id = ANY($1)',
+                [notepadIds]
+            )
+            tagsForNotepad = tagsResult.rows.reduce((acc: Record<string, string[]>, row) => {
+                if (!acc[row.notepad_id]) acc[row.notepad_id] = [];
+                acc[row.notepad_id].push(row.tag);
+                return acc;
+            }, {});
+        }
+
+        const notepadsWithTags = notepads.map(notepad => ({
+            ...notepad,
+            tags: tagsForNotepad[notepad.id] || []
+        }));
+
+        console.log('Notepads with tags:', notepadsWithTags);
+
         res.status(200).json({
-            notepads: notepads.rows,
-            kanbans: kanbans.rows,
-            lists: lists.rows,
-            all: [
-                ...notepads.rows,
-                ...kanbans.rows,
-                ...lists.rows
-            ]
+            notepads: notepadsWithTags,
         });
     } catch (error) {
         console.error('Error fetching tasks:', error);
@@ -190,6 +201,10 @@ app.put('/api/tasks/edit/:id', authMiddleware, async (req: Request, res: Respons
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+app.post('/api/tasks/:id/tags', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+    const { id, tag } = req.body;
+})
 
 const PORT = 5006;
 app.listen(PORT, '0.0.0.0', () => {

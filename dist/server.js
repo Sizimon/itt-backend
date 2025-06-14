@@ -106,25 +106,27 @@ app.get('/api/tasks/fetch', authMiddleware, async (req, res) => {
         return;
     }
     try {
-        const [notepads, kanbans, lists] = await Promise.all([
-            pool.query('SELECT *, \'note\' as type FROM notepads WHERE user_id = $1', [userId]),
-            pool.query('SELECT *, \'kanban\' as type FROM kanbans WHERE user_id = $1', [userId]),
-            pool.query('SELECT *, \'list\' as type FROM lists WHERE user_id = $1', [userId])
-        ]);
-        console.log('Fetched tasks:', {
-            notepads: notepads.rows,
-            kanbans: kanbans.rows,
-            lists: lists.rows
-        });
+        const notepadsResult = await pool.query('SELECT *, \'note\' as type FROM notepads WHERE user_id = $1', [userId]);
+        const notepads = notepadsResult.rows;
+        console.log('Fetched notepads:', notepads);
+        const notepadIds = notepads.map(notepad => notepad.id);
+        let tagsForNotepad = {};
+        if (notepadIds.length > 0) {
+            const tagsResult = await pool.query('SELECT notepad_id, tag_id FROM notepad_tags WHERE notepad_id = ANY($1)', [notepadIds]);
+            tagsForNotepad = tagsResult.rows.reduce((acc, row) => {
+                if (!acc[row.notepad_id])
+                    acc[row.notepad_id] = [];
+                acc[row.notepad_id].push(row.tag);
+                return acc;
+            }, {});
+        }
+        const notepadsWithTags = notepads.map(notepad => ({
+            ...notepad,
+            tags: tagsForNotepad[notepad.id] || []
+        }));
+        console.log('Notepads with tags:', notepadsWithTags);
         res.status(200).json({
-            notepads: notepads.rows,
-            kanbans: kanbans.rows,
-            lists: lists.rows,
-            all: [
-                ...notepads.rows,
-                ...kanbans.rows,
-                ...lists.rows
-            ]
+            notepads: notepadsWithTags,
         });
     }
     catch (error) {
