@@ -4,7 +4,7 @@ dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET || Math.random().toString(36).substring(7);
 export function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
-    console.error('Auth Header:', authHeader);
+    // console.error('Auth Header:', authHeader);
     if (!authHeader) {
         res.status(401).json({ error: 'Authorization header is required' });
         return;
@@ -17,7 +17,7 @@ export function authMiddleware(req, res, next) {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.user = { id: decoded.userId };
-        console.log('Decoded user:', req.user);
+        // console.log('Decoded user:', req.user);
         next();
     }
     catch (error) {

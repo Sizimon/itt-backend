@@ -85,20 +85,53 @@ router.get('/tasks/fetch', async (req: Request, res: Response): Promise<void> =>
 
 router.put('/tasks/edit/:id', async (req: Request, res: Response): Promise<void> => {
     const taskId = req.params.id;
-    const { title, content } = req.body;
-
     const userId = req.user?.id;
+
     if (!userId) {
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
 
-    try {
-        const result = await pool.query(
-            'UPDATE notepads SET title = $1, content = $2 WHERE id = $3 AND user_id = $4 RETURNING *',
-            [title, content, taskId, userId]
-        );
+    // Check the request body for valid fields to update
+    const allowedFields = ['title', 'content', 'is_favorite'];
 
+    // Store updates and values for the query
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    // Start parameter index at 1 for PostgreSQL
+    // PostgreSQL uses $1, $2, etc. for parameterized queries
+    let paramIndex = 1;
+
+    // Iterate over allowed fields and check if they are present in the request body
+    for (const field of allowedFields) {
+        if (field in req.body) {
+            updates.push(`${field} = $${paramIndex}`); // Push the string for the update
+            values.push(req.body[field]); // Push the value to the values array
+            paramIndex++;
+        }
+    }
+
+    if (updates.length === 0) {
+        res.status(400).json({ error: 'No valid fields to update' });
+        return;
+    }
+
+    // Add taskId and userId to the values array
+    values.push(taskId, userId);
+
+    const query = `
+        UPDATE notepads
+        SET ${updates.join(', ')}
+        WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
+        RETURNING *
+    `;
+
+    console.log('Executing query:', query);
+    console.log('With values:', values);
+
+    try {
+        const result = await pool.query(query, values);
         if (result.rows.length === 0) {
             res.status(404).json({ error: 'Task not found' });
             return;

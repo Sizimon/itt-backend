@@ -68,14 +68,38 @@ router.get('/tasks/fetch', async (req, res) => {
 });
 router.put('/tasks/edit/:id', async (req, res) => {
     const taskId = req.params.id;
-    const { title, content } = req.body;
     const userId = req.user?.id;
     if (!userId) {
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
+    const allowedFields = ['title', 'content', 'is_favorite'];
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    for (const field of allowedFields) {
+        if (field in req.body) {
+            updates.push(`${field} = $${paramIndex}`);
+            values.push(req.body[field]);
+            paramIndex++;
+        }
+    }
+    if (updates.length === 0) {
+        res.status(400).json({ error: 'No valid fields to update' });
+        return;
+    }
+    // Add taskId and userId to the values array
+    values.push(taskId, userId);
+    const query = `
+        UPDATE notepads
+        SET ${updates.join(', ')}
+        WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
+        RETURNING *
+    `;
+    console.log('Executing query:', query);
+    console.log('With values:', values);
     try {
-        const result = await pool.query('UPDATE notepads SET title = $1, content = $2 WHERE id = $3 AND user_id = $4 RETURNING *', [title, content, taskId, userId]);
+        const result = await pool.query(query, values);
         if (result.rows.length === 0) {
             res.status(404).json({ error: 'Task not found' });
             return;

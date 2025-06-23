@@ -7,7 +7,7 @@ const JWT_SECRET = process.env.JWT_SECRET || Math.random().toString(36).substrin
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
     const authHeader = req.headers.authorization;
-    console.error('Auth Header:', authHeader);
+    // console.error('Auth Header:', authHeader);
     if (!authHeader) {
         res.status(401).json({ error: 'Authorization header is required' });
         return;
@@ -20,7 +20,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
         req.user = { id: decoded.userId };
-        console.log('Decoded user:', req.user);
+        // console.log('Decoded user:', req.user);
         next();
     } catch (error) {
         res.status(401).json({ error: 'Invalid token' });

@@ -24,7 +24,7 @@ router.put('/user/last-viewed', async (req: Request, res: Response): Promise<voi
             'UPDATE users SET last_viewed_tasks = $1 WHERE id = $2 RETURNING last_viewed_tasks',
             [lastViewed, userId]
         );
-        console.log('Updated last viewed tasks:', historyResult.rows[0].last_viewed_tasks);
+        // console.log('Updated last viewed tasks:', historyResult.rows[0].last_viewed_tasks);
         res.status(200).json({
             lastViewedTasks: historyResult.rows[0].last_viewed_tasks});
     } catch (error) {
