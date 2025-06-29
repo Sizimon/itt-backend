@@ -39,27 +39,32 @@ router.get('/tasks/fetch', async (req, res) => {
     try {
         const notepadsResult = await pool.query('SELECT *, \'note\' as type FROM notepads WHERE user_id = $1', [userId]);
         const notepads = notepadsResult.rows;
-        // console.log('Fetched notepads:', notepads);
         const notepadIds = notepads.map(notepad => notepad.id);
-        let tagsForNotepad = {};
         if (notepadIds.length > 0) {
-            const tagsResult = await pool.query('SELECT notepad_id, tag_id FROM notepad_tags WHERE notepad_id = ANY($1)', [notepadIds]);
-            tagsForNotepad = tagsResult.rows.reduce((accumulator, row) => {
-                if (!accumulator[row.notepad_id]) {
-                    accumulator[row.notepad_id] = [];
+            const tagsResult = await pool.query(`SELECT nt.notepad_id, t.id as id, t.title, t.color
+                FROM notepad_tags nt
+                JOIN tags t ON nt.tag_id = t.id
+                WHERE nt.notepad_id = ANY($1::int[])`, [notepadIds]);
+            let tagsForNotepad = {};
+            tagsResult.rows.forEach(row => {
+                if (!tagsForNotepad[row.notepad_id]) {
+                    tagsForNotepad[row.notepad_id] = [];
                 }
-                accumulator[row.notepad_id].push(row.tag_id);
-                return accumulator;
-            }, {});
+                tagsForNotepad[row.notepad_id].push({
+                    id: row.id,
+                    title: row.title,
+                    color: row.color
+                });
+            });
+            const notepadsWithTags = notepads.map(notepad => ({
+                ...notepad,
+                tags: tagsForNotepad[notepad.id] || []
+            }));
+            // console.log('Notepads with tags:', notepadsWithTags);
+            res.status(200).json({
+                notepads: notepadsWithTags,
+            });
         }
-        const notepadsWithTags = notepads.map(notepad => ({
-            ...notepad,
-            tags: tagsForNotepad[notepad.id] || []
-        }));
-        // console.log('Notepads with tags:', notepadsWithTags);
-        res.status(200).json({
-            notepads: notepadsWithTags,
-        });
     }
     catch (error) {
         console.error('Error fetching tasks:', error);
@@ -73,14 +78,19 @@ router.put('/tasks/edit/:id', async (req, res) => {
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
+    // Check the request body for valid fields to update
     const allowedFields = ['title', 'content', 'is_favorite'];
+    // Store updates and values for the query
     const updates = [];
     const values = [];
+    // Start parameter index at 1 for PostgreSQL
+    // PostgreSQL uses $1, $2, etc. for parameterized queries
     let paramIndex = 1;
+    // Iterate over allowed fields and check if they are present in the request body
     for (const field of allowedFields) {
         if (field in req.body) {
-            updates.push(`${field} = $${paramIndex}`);
-            values.push(req.body[field]);
+            updates.push(`${field} = $${paramIndex}`); // Push the string for the update
+            values.push(req.body[field]); // Push the value to the values array
             paramIndex++;
         }
     }
@@ -112,6 +122,53 @@ router.put('/tasks/edit/:id', async (req, res) => {
     }
 });
 router.post('/tasks/:id/tags', async (req, res) => {
-    const { id, tag } = req.body;
+    const { title, color } = req.body;
+    const taskId = req.params.id;
+    const userId = req.user?.id;
+    console.log('Adding tag:', { title, color }, 'to task ID:', taskId, 'for user ID:', userId);
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+    try {
+        const tagResult = await pool.query(`INSERT INTO tags (title, color)
+            VALUES ($1, $2)
+            ON CONFLICT (title, color) DO UPDATE SET title = EXCLUDED.title
+            RETURNING id, title, color`, [title, color]);
+        const tagId = tagResult.rows[0].id;
+        console.log('Tag created or updated:', tagResult.rows[0]);
+        const notepadTagsResult = await pool.query('INSERT INTO notepad_tags (notepad_id, tag_id) VALUES ($1, $2) RETURNING *', [taskId, tagId]);
+        console.log('Notepad tag correlation created:', notepadTagsResult.rows[0]);
+        res.status(201).json({
+            tag: tagResult.rows[0],
+            notepad_tag: notepadTagsResult.rows[0]
+        });
+    }
+    catch (error) {
+        console.error('Error adding tag to task:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+router.delete('/tasks/:id/tags/:tagId', async (req, res) => {
+    const taskId = req.params.id;
+    const tagId = req.params.tagId;
+    const userId = req.user?.id;
+    console.log('Removing tag ID:', tagId, 'from task ID:', taskId, 'for user ID:', userId);
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+    try {
+        const result = await pool.query('DELETE FROM notepad_tags WHERE notepad_id = $1 AND tag_id = $2 RETURNING *', [taskId, tagId]);
+        if (result.rowCount === 0) {
+            res.status(404).json({ error: 'Tag not found for this task' });
+            return;
+        }
+        res.status(200).json({ message: 'Tag removed from task successfully' });
+    }
+    catch (error) {
+        console.error('Error removing tag from task:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 export default router;

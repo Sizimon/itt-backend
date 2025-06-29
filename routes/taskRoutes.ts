@@ -9,32 +9,32 @@ router.use(authMiddleware);
 // The "type" can be 'note', 'kanban', or 'list'.
 
 router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const type = req.body;
-    console.log('Received task type:', type);
+    try {
+        const type = req.body;
+        console.log('Received task type:', type);
 
-    const userId = req.user?.id;
-    console.log('User ID from request:', userId);
+        const userId = req.user?.id;
+        console.log('User ID from request:', userId);
 
-    if (!userId) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        if (type.type === 'note') {
+            const noteResult = await pool.query(
+                'INSERT INTO notepads (title, content, user_id) VALUES ($1, $2, $3) RETURNING *',
+                ['Untitled Note', '', userId]
+            );
+            res.status(201).json(noteResult.rows[0]);
+        } else {
+            res.status(400).json({ error: 'Invalid task type' });
+            return;
+        }
+    } catch (error) {
+        console.error('Error creating task:', error);
+        res.status(500).json({ error: 'Failed to create task' });
     }
-
-    if (type.type === 'note') {
-        const noteResult = await pool.query(
-        'INSERT INTO notepads (title, content, user_id) VALUES ($1, $2, $3) RETURNING *',
-        ['Untitled Note', '', userId]
-      );
-        res.status(201).json(noteResult.rows[0]);
-    } else {
-        res.status(400).json({ error: 'Invalid task type' });
-        return;
-    }
-  } catch (error) {
-    console.error('Error creating task:', error);
-    res.status(500).json({ error: 'Failed to create task' });
-  }
 });
 
 router.get('/tasks/fetch', async (req: Request, res: Response): Promise<void> => {
@@ -49,39 +49,46 @@ router.get('/tasks/fetch', async (req: Request, res: Response): Promise<void> =>
             [userId]
         );
         const notepads = notepadsResult.rows;
-        // console.log('Fetched notepads:', notepads);
-        
         const notepadIds = notepads.map(notepad => notepad.id);
-        let tagsForNotepad: Record<string, string[]> = {};
+
         if (notepadIds.length > 0) {
             const tagsResult = await pool.query(
-                'SELECT notepad_id, tag_id FROM notepad_tags WHERE notepad_id = ANY($1)',
+                `SELECT nt.notepad_id, t.id as id, t.title, t.color
+                FROM notepad_tags nt
+                JOIN tags t ON nt.tag_id = t.id
+                WHERE nt.notepad_id = ANY($1::int[])`,
                 [notepadIds]
-            )
-            tagsForNotepad = tagsResult.rows.reduce((accumulator: Record<string, string[]>, row) => {
-                if (!accumulator[row.notepad_id]) {
-                    accumulator[row.notepad_id] = [];
+            );
+
+            type Tag = { id: string | number, title: string, color: string };
+            let tagsForNotepad: Record<string, Tag[]> = {};
+            tagsResult.rows.forEach(row => {
+                if (!tagsForNotepad[row.notepad_id]) {
+                    tagsForNotepad[row.notepad_id] = [];
                 }
-                accumulator[row.notepad_id].push(row.tag_id);
-                return accumulator;
-            }, {});
+                tagsForNotepad[row.notepad_id].push({
+                    id: row.id,
+                    title: row.title,
+                    color: row.color
+                });
+            });
+
+            const notepadsWithTags = notepads.map(notepad => ({
+                ...notepad,
+                tags: tagsForNotepad[notepad.id] || []
+            }));
+
+            // console.log('Notepads with tags:', notepadsWithTags);
+
+            res.status(200).json({
+                notepads: notepadsWithTags,
+            });
         }
-
-        const notepadsWithTags = notepads.map(notepad => ({
-            ...notepad,
-            tags: tagsForNotepad[notepad.id] || []
-        }));
-
-        // console.log('Notepads with tags:', notepadsWithTags);
-
-        res.status(200).json({
-            notepads: notepadsWithTags,
-        });
     } catch (error) {
         console.error('Error fetching tasks:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
-})
+});
 
 router.put('/tasks/edit/:id', async (req: Request, res: Response): Promise<void> => {
     const taskId = req.params.id;
@@ -145,7 +152,69 @@ router.put('/tasks/edit/:id', async (req: Request, res: Response): Promise<void>
 });
 
 router.post('/tasks/:id/tags', async (req: Request, res: Response): Promise<void> => {
-    const { id, tag } = req.body;
-})
+    const { title, color } = req.body;
+    const taskId = req.params.id;
+    const userId = req.user?.id;
+    console.log('Adding tag:', { title, color }, 'to task ID:', taskId, 'for user ID:', userId);
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    try {
+        const tagResult = await pool.query(
+            `INSERT INTO tags (title, color)
+            VALUES ($1, $2)
+            ON CONFLICT (title, color) DO UPDATE SET title = EXCLUDED.title
+            RETURNING id, title, color`,
+            [title, color]
+        );
+        const tagId = tagResult.rows[0].id;
+        console.log('Tag created or updated:', tagResult.rows[0]);
+
+        const notepadTagsResult = await pool.query(
+            'INSERT INTO notepad_tags (notepad_id, tag_id) VALUES ($1, $2) RETURNING *',
+            [taskId, tagId]
+        );
+        console.log('Notepad tag correlation created:', notepadTagsResult.rows[0]);
+        res.status(201).json({
+            tag: tagResult.rows[0],
+            notepad_tag: notepadTagsResult.rows[0]
+        });
+    } catch (error) {
+        console.error('Error adding tag to task:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.delete('/tasks/:id/tags/:tagId', async (req: Request, res: Response): Promise<void> => {
+    const taskId = req.params.id;
+    const tagId = req.params.tagId;
+    const userId = req.user?.id;
+
+    console.log('Removing tag ID:', tagId, 'from task ID:', taskId, 'for user ID:', userId);
+
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    try {
+        const result = await pool.query(
+            'DELETE FROM notepad_tags WHERE notepad_id = $1 AND tag_id = $2 RETURNING *',
+            [taskId, tagId]
+        );
+
+        if (result.rowCount === 0) {
+            res.status(404).json({ error: 'Tag not found for this task' });
+            return;
+        }
+
+        res.status(200).json({ message: 'Tag removed from task successfully' });
+    } catch (error) {
+        console.error('Error removing tag from task:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 export default router;
