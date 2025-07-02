@@ -44,7 +44,7 @@ router.get('/tasks/fetch', async (req, res) => {
             const tagsResult = await pool.query(`SELECT nt.notepad_id, t.id as id, t.title, t.color
                 FROM notepad_tags nt
                 JOIN tags t ON nt.tag_id = t.id
-                WHERE nt.notepad_id = ANY($1::int[])`, [notepadIds]);
+                WHERE nt.notepad_id = ANY($1::int[]) AND t.user_id = $2`, [notepadIds, userId]);
             let tagsForNotepad = {};
             tagsResult.rows.forEach(row => {
                 if (!tagsForNotepad[row.notepad_id]) {
@@ -121,9 +121,9 @@ router.put('/tasks/edit/:id', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.post('/tasks/:id/tags', async (req, res) => {
+router.post('/tasks/:taskId/tags', async (req, res) => {
     const { title, color } = req.body;
-    const taskId = req.params.id;
+    const taskId = req.params.taskId;
     const userId = req.user?.id;
     console.log('Adding tag:', { title, color }, 'to task ID:', taskId, 'for user ID:', userId);
     if (!userId) {
@@ -131,10 +131,10 @@ router.post('/tasks/:id/tags', async (req, res) => {
         return;
     }
     try {
-        const tagResult = await pool.query(`INSERT INTO tags (title, color)
-            VALUES ($1, $2)
+        const tagResult = await pool.query(`INSERT INTO tags (title, color, user_id)
+            VALUES ($1, $2, $3)
             ON CONFLICT (title, color) DO UPDATE SET title = EXCLUDED.title
-            RETURNING id, title, color`, [title, color]);
+            RETURNING id, title, color`, [title, color, userId]);
         const tagId = tagResult.rows[0].id;
         console.log('Tag created or updated:', tagResult.rows[0]);
         const notepadTagsResult = await pool.query('INSERT INTO notepad_tags (notepad_id, tag_id) VALUES ($1, $2) RETURNING *', [taskId, tagId]);
