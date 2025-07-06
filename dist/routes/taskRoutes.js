@@ -71,6 +71,22 @@ router.get('/tasks/fetch', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+router.get('/tags/fetch', async (req, res) => {
+    const userId = req.user?.id;
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+    try {
+        const tagsResult = await pool.query('SELECT id, title, color FROM tags WHERE user_id = $1', [userId]);
+        res.status(200).json(tagsResult.rows);
+        console.log('Fetched tags:', tagsResult.rows);
+    }
+    catch (error) {
+        console.error('Error fetching tags:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 router.put('/tasks/edit/:id', async (req, res) => {
     const taskId = req.params.id;
     const userId = req.user?.id;
@@ -146,6 +162,33 @@ router.post('/tasks/:taskId/tags', async (req, res) => {
     }
     catch (error) {
         console.error('Error adding tag to task:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+router.post('/tasks/:id/tags/existing/:tagId', async (req, res) => {
+    const taskId = req.params.id;
+    const tagId = req.params.tagId;
+    const userId = req.user?.id;
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+    console.log('Adding existing tag ID:', tagId, 'to task ID:', taskId, 'for user ID:', userId);
+    try {
+        const result = await pool.query(`
+            INSERT INTO notepad_tags (notepad_id, tag_id)
+            VALUES ($1, $2)
+            ON CONFLICT (notepad_id, tag_id) DO NOTHING
+            RETURNING *
+        `, [taskId, tagId]);
+        if (result.rows.length === 0) {
+            res.status(404).json({ error: 'Tag not found for this task' });
+            return;
+        }
+        res.status(200).json({ message: 'Tag added to task successfully' });
+    }
+    catch (error) {
+        console.error('Error adding existing tag to task:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
