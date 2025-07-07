@@ -4,10 +4,10 @@ import pool from '../db/dbConnection.js';
 
 const router = Router();
 router.use(authMiddleware);
+
 // Endpoint to create a new task (notepad, kanban, or list)
 // This endpoint expects a JSON body with a "type" field indicating the type of task to create.
-// The "type" can be 'note', 'kanban', or 'list'.
-
+// The "type" can be 'note'.
 router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
     try {
         const type = req.body;
@@ -36,6 +36,9 @@ router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
         res.status(500).json({ error: 'Failed to create task' });
     }
 });
+
+// Endpoint to fetch all tasks for the authenticated user
+// This endpoint will return all tasks (notepads) for the authenticated user, including their tags.
 
 router.get('/tasks/fetch', async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.id;
@@ -90,25 +93,12 @@ router.get('/tasks/fetch', async (req: Request, res: Response): Promise<void> =>
     }
 });
 
-router.get('/tags/fetch', async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    if (!userId) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-    }
-    try {
-        const tagsResult = await pool.query(
-            'SELECT id, title, color FROM tags WHERE user_id = $1',
-            [userId]
-        );
-        res.status(200).json(tagsResult.rows);
-        console.log('Fetched tags:', tagsResult.rows);
-    } catch (error) {
-        console.error('Error fetching tags:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
+// Endpoint to edit a task
+// This endpoint expects a JSON body with fields to update.
+// It will update the task in the notepads table and return the updated task.
+// The task ID is passed as a URL parameter.
+// It will only update fields that are present in the request body.
+// If no valid fields are provided, it will return a 400 error.
 router.put('/tasks/edit/:id', async (req: Request, res: Response): Promise<void> => {
     const taskId = req.params.id;
     const userId = req.user?.id;
@@ -170,6 +160,65 @@ router.put('/tasks/edit/:id', async (req: Request, res: Response): Promise<void>
     }
 });
 
+
+// Endpoint to permanently delete a task
+// This endpoint expects the task ID to be passed as a URL parameter.
+// It will delete the task from the notepads table and any associated records in the notepad_tags table, due to the foreign key constraint.
+router.delete('/tasks/delete/:id', async (req: Request, res: Response): Promise<void> => {
+    const taskId = req.params.id;
+    const userId = req.user?.id;
+
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    try {
+        const result = await pool.query(
+            'DELETE FROM notepads WHERE id = $1 AND user_id = $2 RETURNING *',
+            [taskId, userId]
+        );
+
+        if (result.rows.length === 0) {
+            res.status(404).json({ error: 'Task not found' });
+            return;
+        }
+
+        res.status(200).json({ message: 'Task deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting task:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Endpoint to fetch all tags for the authenticated user
+// This endpoint will return all tags associated with the user, including their ID, title, and color.
+// It will return an empty array if no tags are found.
+
+router.get('/tags/fetch', async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+    try {
+        const tagsResult = await pool.query(
+            'SELECT id, title, color FROM tags WHERE user_id = $1',
+            [userId]
+        );
+        res.status(200).json(tagsResult.rows);
+        console.log('Fetched tags:', tagsResult.rows);
+    } catch (error) {
+        console.error('Error fetching tags:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Endpoint to create a new tag and associate it with a task
+// This endpoint expects a JSON body with "title" and "color" fields.
+// It will insert a new tag into the tags table and create a record in the notepad_tags table to associate the tag with the task.
+// If a tag with the same title and color already exists, it will update the existing tag instead of creating a new one.
+// The task ID is passed as a URL parameter.
 router.post('/tasks/:taskId/tags', async (req: Request, res: Response): Promise<void> => {
     const { title, color } = req.body;
     const taskId = req.params.taskId;
@@ -206,6 +255,9 @@ router.post('/tasks/:taskId/tags', async (req: Request, res: Response): Promise<
     }
 });
 
+// Endpoint to add an existing tag to a task
+// This endpoint expects the tag ID to be passed as a URL parameter.
+// It will insert a new record into the notepad_tags table to associate the tag with the task.
 router.post('/tasks/:id/tags/existing/:tagId', async (req: Request, res: Response): Promise<void> => {
     const taskId = req.params.id;
     const tagId = req.params.tagId;
@@ -238,6 +290,9 @@ router.post('/tasks/:id/tags/existing/:tagId', async (req: Request, res: Respons
     }
 });
 
+// Endpoint to remove a tag from a task
+// This endpoint expects the task ID and tag ID to be passed as URL parameters.
+// It will delete the corresponding record from the notepad_tags table.
 router.delete('/tasks/:id/tags/:tagId', async (req: Request, res: Response): Promise<void> => {
     const taskId = req.params.id;
     const tagId = req.params.tagId;
@@ -264,6 +319,38 @@ router.delete('/tasks/:id/tags/:tagId', async (req: Request, res: Response): Pro
         res.status(200).json({ message: 'Tag removed from task successfully' });
     } catch (error) {
         console.error('Error removing tag from task:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Endpoint to permanently delete a tag
+// This endpoint expects the tag ID to be passed as a URL parameter.
+// It will delete the tag from the tags table and any associated records in the notepad_tags table, due to the foreign key constraint.
+router.delete('/tags/:tagId', async (req: Request, res: Response): Promise<void> => {
+    const tagId = req.params.tagId;
+    const userId = req.user?.id;
+
+    console.log('Deleting tag ID:', tagId, 'for user ID:', userId);
+
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    try {
+        const result = await pool.query(
+            'DELETE FROM tags WHERE id = $1 AND user_id = $2 RETURNING *',
+            [tagId, userId]
+        );
+
+        if (result.rowCount === 0) {
+            res.status(404).json({ error: 'Tag not found' });
+            return;
+        }
+
+        res.status(200).json({ message: 'Tag deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting tag:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
