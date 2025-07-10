@@ -63,7 +63,7 @@ router.get('/tasks/fetch', async (req: Request, res: Response): Promise<void> =>
                 [notepadIds, userId]
             );
 
-            type Tag = { id: string | number, title: string, color: string };
+            type Tag = { id: Number | number, title: string, color: string };
             let tagsForNotepad: Record<string, Tag[]> = {};
             tagsResult.rows.forEach(row => {
                 if (!tagsForNotepad[row.notepad_id]) {
@@ -80,8 +80,6 @@ router.get('/tasks/fetch', async (req: Request, res: Response): Promise<void> =>
                 ...notepad,
                 tags: tagsForNotepad[notepad.id] || []
             }));
-
-            // console.log('Notepads with tags:', notepadsWithTags);
 
             res.status(200).json({
                 notepads: notepadsWithTags,

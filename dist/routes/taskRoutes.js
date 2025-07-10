@@ -62,7 +62,7 @@ router.get('/tasks/fetch', async (req, res) => {
                 ...notepad,
                 tags: tagsForNotepad[notepad.id] || []
             }));
-            // console.log('Notepads with tags:', notepadsWithTags);
+            console.log('API response notepads:', notepadsWithTags);
             res.status(200).json({
                 notepads: notepadsWithTags,
             });
