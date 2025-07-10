@@ -184,7 +184,14 @@ router.delete('/tasks/delete/:id', async (req: Request, res: Response): Promise<
             return;
         }
 
-        res.status(200).json({ message: 'Task deleted successfully' });
+        await pool.query( // Query to remove the deleted task from the user's last viewed tasks
+            `UPDATE users 
+            SET last_viewed_tasks = array_remove(last_viewed_tasks, $1)
+            WHERE id = $2`,
+            [taskId, userId]
+        )
+
+        res.status(200).json({ message: 'Task deleted successfully, last viewed tasks updated' });
     } catch (error) {
         console.error('Error deleting task:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -342,12 +349,11 @@ router.delete('/tags/:tagId', async (req: Request, res: Response): Promise<void>
             'DELETE FROM tags WHERE id = $1 AND user_id = $2 RETURNING *',
             [tagId, userId]
         );
-
         if (result.rowCount === 0) {
             res.status(404).json({ error: 'Tag not found' });
             return;
         }
-
+        
         res.status(200).json({ message: 'Tag deleted successfully' });
     } catch (error) {
         console.error('Error deleting tag:', error);
