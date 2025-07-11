@@ -6,21 +6,25 @@ dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET || Math.random().toString(36).substring(7);
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-    const authHeader = req.headers.authorization;
+    const token = req.cookies?.token;
     // console.error('Auth Header:', authHeader);
-    if (!authHeader) {
-        res.status(401).json({ error: 'Authorization header is required' });
-        return;
-    }
-    const token = authHeader.split(' ')[1];
     if (!token) {
-        res.status(401).json({ error: 'Token is required' });
+        res.status(401).json({ error: 'Authorization token is required' });
         return;
     }
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+        const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
         req.user = { id: decoded.userId };
-        // console.log('Decoded user:', req.user);
+
+        // Issue a new token with 24h expiry
+        const newToken = jwt.sign({ userId: decoded.userId }, JWT_SECRET, { expiresIn: '24h' });
+        res.cookie('token', newToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 24 * 60 * 60 * 1000
+        });
+
         next();
     } catch (error) {
         res.status(401).json({ error: 'Invalid token' });
