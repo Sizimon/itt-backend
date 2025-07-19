@@ -1,8 +1,17 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { authMiddleware } from '../AuthMiddleware.js';
 import pool from '../db/dbConnection.js';
+const generalLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: {
+        error: 'Too many requests from this IP, please try again later.'
+    }
+});
 const router = Router();
 router.use(authMiddleware);
+router.use(generalLimiter);
 // Endpoint to create a new task (notepad, kanban, or list)
 // This endpoint expects a JSON body with a "type" field indicating the type of task to create.
 // The "type" can be 'note'.
@@ -134,12 +143,13 @@ router.put('/tasks/edit/:id', async (req, res) => {
 router.delete('/tasks/delete/:id', async (req, res) => {
     const taskId = req.params.id;
     const userId = req.user?.id;
+    const taskIdNumber = Number(taskId);
     if (!userId) {
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
     try {
-        const result = await pool.query('DELETE FROM notepads WHERE id = $1 AND user_id = $2 RETURNING *', [taskId, userId]);
+        const result = await pool.query('DELETE FROM notepads WHERE id = $1 AND user_id = $2 RETURNING *', [taskIdNumber, userId]);
         if (result.rows.length === 0) {
             res.status(404).json({ error: 'Task not found' });
             return;
@@ -147,7 +157,7 @@ router.delete('/tasks/delete/:id', async (req, res) => {
         await pool.query(// Query to remove the deleted task from the user's last viewed tasks
         `UPDATE users 
             SET last_viewed_tasks = array_remove(last_viewed_tasks, $1)
-            WHERE id = $2`, [taskId, userId]);
+            WHERE id = $2`, [taskIdNumber, userId]);
         res.status(200).json({ message: 'Task deleted successfully, last viewed tasks updated' });
     }
     catch (error) {

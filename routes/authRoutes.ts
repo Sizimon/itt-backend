@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
@@ -7,12 +8,20 @@ import { authMiddleware } from '../AuthMiddleware.js';
 
 dotenv.config();
 
+const LoginAndRegisterLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 15, // Limit each IP to 15 requests per windowMs
+    message: {
+        error: 'Too many login or registration attempts from this IP, please try again later.'
+    }
+});
+
 const JWT_SECRET = process.env.JWT_SECRET || Math.random().toString(36).substring(7);
 
 const router = Router();
 
 // Endpoint to register & authenticate a new user
-router.post('/auth/register', async (req: Request, res: Response): Promise<void> => {
+router.post('/auth/register', LoginAndRegisterLimiter, async (req: Request, res: Response): Promise<void> => {
     try {
         const { username, email, password } = req.body;
         if (!username || !email || !password) {
@@ -49,7 +58,7 @@ router.post('/auth/register', async (req: Request, res: Response): Promise<void>
         });
 
         res.status(201).json({
-            user: { id: user.id, username: user.username, email: user.email, lastViewedTasks: user.last_viewed_tasks }
+            message: 'User registered & authenticated successfully',
         });
     } catch (error) {
         console.error('Error registering user:', error);
@@ -58,7 +67,7 @@ router.post('/auth/register', async (req: Request, res: Response): Promise<void>
 });
 
 // Endpoint to authenticate user login
-router.post('/auth/login', async (req: Request, res: Response): Promise<void> => {
+router.post('/auth/login', LoginAndRegisterLimiter, async (req: Request, res: Response): Promise<void> => {
     try {
         const { usernameOrEmail, password } = req.body;
 
@@ -85,7 +94,7 @@ router.post('/auth/login', async (req: Request, res: Response): Promise<void> =>
             maxAge: 24 * 60 * 60 * 1000 // 24 hours
         });
         res.status(200).json({
-            user: { id: user.id, username: user.username, email: user.email, lastViewedTasks: user.last_viewed_tasks }
+            message: 'Authenticated',
         });
     } catch (error) {
         console.error('Error authenticating user:', error);
@@ -93,7 +102,7 @@ router.post('/auth/login', async (req: Request, res: Response): Promise<void> =>
     }
 });
 
-router.get('/auth/me', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get('/auth/me', authMiddleware, LoginAndRegisterLimiter, async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.id;
     if (!userId) {
         res.status(401).json({ error: 'Unauthorized' });
