@@ -1,4 +1,4 @@
-name: Build and Push Docker Image for ITT Backend
+name: Build and Push Docker Image for noto-backend
 
 on:
   push:
@@ -21,4 +21,4 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          docker buildx build --platform linux/amd64 -t shhmon/itt-backend:latest --push .
+          docker buildx build --platform linux/amd64 -t shhmon/noto-backend:latest --push .
