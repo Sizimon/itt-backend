@@ -13,9 +13,9 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-app.use('/api', authRoutes);
-app.use('/api', taskRoutes);
-app.use('/api', userRoutes);
+app.use('/noto-backend/api', authRoutes);
+app.use('/noto-backend/api', taskRoutes);
+app.use('/noto-backend/api', userRoutes);
 
 
 const PORT = 5006;
