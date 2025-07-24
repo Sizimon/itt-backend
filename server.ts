@@ -6,8 +6,11 @@ import taskRoutes from './routes/taskRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 
 const app = express();
+
+app.set('trust proxy', true); // Trust the first proxy 
+
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: 'https://szymonsamus.dev',
     credentials: true
 }));
 app.use(express.json());

@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || Math.random().toString(36).substring(7);
+const JWT_SECRET = process.env.SECRET_KEY || Math.random().toString(36).substring(7);
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
     const token = req.cookies?.token;
