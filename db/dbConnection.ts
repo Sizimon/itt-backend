@@ -9,7 +9,7 @@ const pool = new Pool({
     host: process.env.NOTO_DB_HOST,
     database: process.env.NOTO_DB_NAME,
     password: process.env.DB_PASSWORD,
-    port: parseInt(process.env.DB_PORT || '5432'),
+    port: Number(process.env.DB_PORT) || 5432, // Default to 5432 if not set
 });
 
 export default pool;
