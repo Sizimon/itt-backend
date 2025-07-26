@@ -7,7 +7,7 @@ import userRoutes from './routes/userRoutes.js';
 
 const app = express();
 
-app.set('trust proxy', true); // Trust the first proxy 
+app.set('trust proxy', 1); // Trust the first proxy 
 
 app.use(cors({
     origin: 'https://szymonsamus.dev',
